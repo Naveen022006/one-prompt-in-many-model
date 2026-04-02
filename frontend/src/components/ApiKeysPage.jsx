@@ -45,6 +45,36 @@ const API_MODELS = [
     helpUrl: "https://console.groq.com/",
     helpText: "Get your Groq API key from console.groq.com",
   },
+  {
+    id: "claude",
+    name: "Claude / Anthropic",
+    icon: "🧠",
+    color: "#22d3ee",
+    description: "Advanced reasoning & analysis (Claude 3.5 Sonnet)",
+    placeholder: "sk-ant-...",
+    helpUrl: "https://console.anthropic.com/",
+    helpText: "Get your Claude API key from console.anthropic.com",
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    icon: "🚀",
+    color: "#60a5fa",
+    description: "State-of-the-art reasoning",
+    placeholder: "sk-...",
+    helpUrl: "https://platform.deepseek.com/",
+    helpText: "Get your DeepSeek API key from platform.deepseek.com",
+  },
+  {
+    id: "grok",
+    name: "Grok / xAI",
+    icon: "⚡",
+    color: "#f87171",
+    description: "Advanced reasoning by Elon Musk's xAI",
+    placeholder: "sk-...",
+    helpUrl: "https://x.ai/api",
+    helpText: "Get your Grok API key from x.ai/api",
+  },
 ];
 
 export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys }) {
@@ -52,6 +82,9 @@ export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys
     openai_api_key: initialKeys?.openai_api_key || "",
     gemini_api_key: initialKeys?.gemini_api_key || "",
     groq_api_key: initialKeys?.groq_api_key || "",
+    claude_api_key: initialKeys?.claude_api_key || "",
+    deepseek_api_key: initialKeys?.deepseek_api_key || "",
+    grok_api_key: initialKeys?.grok_api_key || "",
   });
 
   const [editingKey, setEditingKey] = useState(null);
@@ -59,6 +92,9 @@ export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys
     openai: false,
     gemini: false,
     groq: false,
+    claude: false,
+    deepseek: false,
+    grok: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,6 +117,9 @@ export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys
         openai_api_key: saved.openai || "",
         gemini_api_key: saved.gemini || "",
         groq_api_key: saved.groq || "",
+        claude_api_key: saved.claude || "",
+        deepseek_api_key: saved.deepseek || "",
+        grok_api_key: saved.grok || "",
       });
     } catch (err) {
       showFeedback("error", "Failed to load API keys");
@@ -175,13 +214,13 @@ export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys
         <div>
           <h1 className="api-keys-title">API Key Management</h1>
           <p className="api-keys-subtitle">
-            Add and manage your API keys for GPT, Gemini, and Groq. Keys are encrypted and stored securely.
+            Add and manage your API keys for GPT, Gemini, Groq, Claude, DeepSeek, and Grok. Keys are encrypted and stored securely.
           </p>
         </div>
         <div className="api-keys-status-badge">
           <span className="status-icon">✓</span>
           <span className="status-count">
-            {Object.values(keys).filter((k) => k && k.trim()).length} / 3 active
+            {Object.values(keys).filter((k) => k && k.trim()).length} / 6 active
           </span>
         </div>
       </div>

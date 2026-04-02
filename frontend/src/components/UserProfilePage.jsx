@@ -7,12 +7,14 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import ChangePasswordModal from "./ChangePasswordModal";
+import DeleteAccountModal from "./DeleteAccountModal";
 import "./UserProfilePage.css";
 
-export default function UserProfilePage({ userEmail, onSignOut, onNavigate }) {
+export default function UserProfilePage({ userEmail, onSignOut, onNavigate, userId }) {
   const [copied, setCopied] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordUpdate, setPasswordUpdate] = useState({ loading: false, message: "" });
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "U";
 
@@ -58,6 +60,38 @@ export default function UserProfilePage({ userEmail, onSignOut, onNavigate }) {
   const handleSignOut = () => {
     if (confirm("Are you sure you want to sign out?")) {
       onSignOut();
+    }
+  };
+
+  const handleDeleteAccount = async (password) => {
+    try {
+      // Call backend to delete the account and associated data
+      const API_URL = "http://localhost:8000";
+      
+      const res = await fetch(`${API_URL}/delete-account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          password: password, // Backend receives password for audit/verification
+        }),
+      });
+
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        const detail = errorBody?.detail || `Server error: ${res.status}`;
+        throw new Error(detail);
+      }
+
+      // Clear authentication and redirect to login
+      await supabase.auth.signOut();
+      
+      // Redirect to auth page
+      setTimeout(() => {
+        onSignOut();
+      }, 500);
+    } catch (err) {
+      throw new Error(err.message || "Failed to delete account. Please check your password and try again.");
     }
   };
 
@@ -274,10 +308,10 @@ export default function UserProfilePage({ userEmail, onSignOut, onNavigate }) {
               </div>
               <button
                 className="setting-action-btn delete"
-                disabled
-                title="Coming soon"
+                onClick={() => setShowDeleteAccount(true)}
+                title="Delete your account permanently"
               >
-                Coming Soon
+                Delete
               </button>
             </div>
           </div>
@@ -300,6 +334,15 @@ export default function UserProfilePage({ userEmail, onSignOut, onNavigate }) {
         <ChangePasswordModal
           onClose={() => setShowChangePassword(false)}
           onChangePassword={handleChangePassword}
+        />
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteAccount && (
+        <DeleteAccountModal
+          userId={userId}
+          onClose={() => setShowDeleteAccount(false)}
+          onDeleteAccount={handleDeleteAccount}
         />
       )}
     </div>

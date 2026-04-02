@@ -126,6 +126,9 @@ export default function HistoryPage({ conversations, onDelete, onReuse, onContin
             const hasGpt = thread.turns.some(t => t.gpt_response);
             const hasGemini = thread.turns.some(t => t.gemini_response);
             const hasGroq = thread.turns.some(t => t.groq_response);
+            const hasClaude = thread.turns.some(t => t.claude_response);
+            const hasDeepseek = thread.turns.some(t => t.deepseek_response);
+            const hasGrok = thread.turns.some(t => t.grok_response);
             const turnCount = thread.turns.length;
 
             return (
@@ -187,6 +190,9 @@ export default function HistoryPage({ conversations, onDelete, onReuse, onContin
                     {hasGpt && <span className="history-model-badge gpt">GPT-4o Mini</span>}
                     {hasGemini && <span className="history-model-badge gemini">Gemini</span>}
                     {hasGroq && <span className="history-model-badge" style={{background: 'var(--orange-dim)', color: 'var(--orange-primary)', border: '1px solid var(--orange-border)'}}>Groq</span>}
+                    {hasClaude && <span className="history-model-badge" style={{background: 'var(--cyan-dim)', color: 'var(--cyan-primary)', border: '1px solid rgba(34, 211, 238, 0.25)'}}>Claude</span>}
+                    {hasDeepseek && <span className="history-model-badge" style={{background: 'var(--blue-dim)', color: 'var(--blue-primary)', border: '1px solid rgba(96, 165, 250, 0.25)'}}>DeepSeek</span>}
+                    {hasGrok && <span className="history-model-badge" style={{background: 'var(--red-dim)', color: 'var(--red-primary)', border: '1px solid rgba(248, 113, 113, 0.25)'}}>Grok</span>}
                   </div>
                 )}
 

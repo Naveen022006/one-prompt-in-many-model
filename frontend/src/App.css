@@ -439,7 +439,12 @@
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
   transition: all var(--transition-fast);
-  cursor: default;
+  cursor: pointer;
+}
+
+.model-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--text-secondary);
 }
 
 .model-chip.active {
@@ -448,16 +453,64 @@
   color: var(--green-primary);
 }
 
+.model-chip.active.selected {
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+  border-color: var(--green-primary);
+}
+
 .model-chip.active-purple {
   background: var(--purple-dim);
   border-color: var(--purple-border);
   color: var(--purple-primary);
 }
 
+.model-chip.active-purple.selected {
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+  border-color: var(--purple-primary);
+}
+
 .model-chip.active-orange {
   background: var(--orange-dim);
   border-color: var(--orange-border);
   color: var(--orange-primary);
+}
+
+.model-chip.active-orange.selected {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  border-color: var(--orange-primary);
+}
+
+.model-chip.active-teal {
+  background: var(--cyan-dim);
+  border-color: rgba(34, 211, 238, 0.25);
+  color: var(--cyan-primary);
+}
+
+.model-chip.active-teal.selected {
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.4);
+  border-color: var(--cyan-primary);
+}
+
+.model-chip.active-blue {
+  background: var(--blue-dim);
+  border-color: rgba(96, 165, 250, 0.25);
+  color: var(--blue-primary);
+}
+
+.model-chip.active-blue.selected {
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.4);
+  border-color: var(--blue-primary);
+}
+
+.model-chip.active-red {
+  background: var(--red-dim);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: var(--red-primary);
+}
+
+.model-chip.active-red.selected {
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.4);
+  border-color: var(--red-primary);
 }
 
 /* Generate button */
@@ -651,6 +704,50 @@
 .card-badge.high-fidelity {
   background: var(--orange-dim);
   color: var(--orange-primary);
+}
+
+.card-badge.selected-badge {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(236, 72, 153, 0.2));
+  color: var(--purple-primary);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+}
+
+/* Single model layout — wider, centered */
+.response-grid.single-model {
+  grid-template-columns: minmax(0, 700px);
+  justify-content: center;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Two models layout */
+.response-grid.two-models {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .response-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .response-grid.single-model {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .response-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .response-grid.single-model {
+    grid-template-columns: 1fr;
+  }
+  
+  .response-grid.two-models {
+    grid-template-columns: 1fr;
+  }
 }
 
 .card-provider {

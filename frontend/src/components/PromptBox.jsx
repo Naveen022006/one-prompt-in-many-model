@@ -9,7 +9,17 @@ import { useState, useRef, useEffect } from "react";
 
 export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }) {
   const [prompt, setPrompt] = useState("");
+  const [selectedModels, setSelectedModels] = useState(new Set(["gpt"])); // Track selected models (multi-select)
   const textareaRef = useRef(null);
+
+  const MODELS = [
+    { id: "gpt", name: "GPT-4o Mini", className: "model-chip active" },
+    { id: "gemini", name: "Gemini 1.5 Flash", className: "model-chip active-purple" },
+    { id: "groq", name: "Llama 3 (Groq)", className: "model-chip active-orange" },
+    { id: "claude", name: "Claude 3.5 Sonnet", className: "model-chip active-teal" },
+    { id: "deepseek", name: "DeepSeek", className: "model-chip active-blue" },
+    { id: "grok", name: "Grok by xAI", className: "model-chip active-red" },
+  ];
 
   // Pre-fill prompt when reusing from history
   useEffect(() => {
@@ -33,11 +43,16 @@ export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }
       return;
     }
 
+    if (selectedModels.size === 0) {
+      alert("Please select at least one model.");
+      return;
+    }
+
     if (!hasKeys) {
       alert("Please configure your API keys first (click 'API Keys' in the top bar).");
       return;
     }
-    onSubmit(prompt.trim());
+    onSubmit({ prompt: prompt.trim(), selectedModels: Array.from(selectedModels) });
     setPrompt(""); // Clear the input field after submitting
   };
 
@@ -71,9 +86,25 @@ export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }
         <div className="prompt-controls">
           {/* Model Chips */}
           <div className="model-chips">
-            <span className="model-chip active">GPT-4o Mini</span>
-            <span className="model-chip active-purple">Gemini 1.5 Flash</span>
-            <span className="model-chip active-orange">Llama 3 (Groq)</span>
+            {MODELS.map((model) => (
+              <button
+                key={model.id}
+                className={`${model.className} ${selectedModels.has(model.id) ? "selected" : ""}`}
+                onClick={() => {
+                  const newSelected = new Set(selectedModels);
+                  if (newSelected.has(model.id)) {
+                    newSelected.delete(model.id);
+                  } else {
+                    newSelected.add(model.id);
+                  }
+                  setSelectedModels(newSelected);
+                }}
+                type="button"
+                title={`Toggle ${model.name}`}
+              >
+                {model.name}
+              </button>
+            ))}
           </div>
 
           {/* Generate Button */}

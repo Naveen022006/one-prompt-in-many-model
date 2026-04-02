@@ -5,16 +5,19 @@
  * combining insights from both models — matching Image 1 reference.
  */
 
-export default function BestAnswer({ gptResponse, geminiResponse, groqResponse }) {
+export default function BestAnswer({ gptResponse, geminiResponse, groqResponse, claudeResponse, deepseekResponse, grokResponse }) {
   // Only show when we have at least one successful response
   const hasGpt = gptResponse?.text;
   const hasGemini = geminiResponse?.text;
   const hasGroq = groqResponse?.text;
-  if (!hasGpt && !hasGemini && !hasGroq) return null;
+  const hasClaude = claudeResponse?.text;
+  const hasDeepseek = deepseekResponse?.text;
+  const hasGrok = grokResponse?.text;
+  if (!hasGpt && !hasGemini && !hasGroq && !hasClaude && !hasDeepseek && !hasGrok) return null;
 
   // Build a simple synthesis summary
-  const modelCount = [hasGpt, hasGemini, hasGroq].filter(Boolean).length;
-  const modelNames = [hasGpt && "GPT-4o Mini", hasGemini && "Gemini 1.5 Flash", hasGroq && "Llama 3 (Groq)"].filter(Boolean).join(", ").replace(/, ([^,]*)$/, ' and $1');
+  const modelCount = [hasGpt, hasGemini, hasGroq, hasClaude, hasDeepseek, hasGrok].filter(Boolean).length;
+  const modelNames = [hasGpt && "GPT-4o Mini", hasGemini && "Gemini 1.5 Flash", hasGroq && "Llama 3 (Groq)", hasClaude && "Claude 3.5 Sonnet", hasDeepseek && "DeepSeek", hasGrok && "Grok"].filter(Boolean).join(", ").replace(/, ([^,]*)$/, ' and $1');
 
   return (
     <section className="best-answer-section" id="best-answer">
