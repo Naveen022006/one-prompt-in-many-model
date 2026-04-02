@@ -19,7 +19,7 @@ export default function Sidebar({ activePage, onNavigate, onNewPrompt, onSignOut
 
       {/* New Prompt */}
       <button className="sidebar-new-btn" onClick={onNewPrompt} id="new-prompt-btn">
-        <span>＋</span> New Prompt
+        <span>  </span> New Chat
       </button>
 
       {/* Main Nav */}
