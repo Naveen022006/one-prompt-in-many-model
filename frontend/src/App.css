@@ -285,11 +285,19 @@
   color: #fff;
   cursor: pointer;
   box-shadow: 0 0 16px rgba(167, 139, 250, 0.2);
-  transition: transform var(--transition-fast);
+  transition: all var(--transition-fast);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  padding: 0;
 }
 
 .topnav-avatar:hover {
   transform: scale(1.1);
+  box-shadow: 0 0 24px rgba(167, 139, 250, 0.4);
+  border-color: rgba(167, 139, 250, 0.8);
+}
+
+.topnav-avatar:active {
+  transform: scale(0.95);
 }
 
 /* ======================== MAIN CONTENT ======================== */

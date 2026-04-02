@@ -13,7 +13,8 @@ import Sidebar from "./components/Sidebar";
 import TopNav from "./components/TopNav";
 import PromptBox from "./components/PromptBox";
 import ResponseCard from "./components/ResponseCard";
-import ApiKeysModal from "./components/ApiKeysModal";
+import ApiKeysPage from "./components/ApiKeysPage";
+import UserProfilePage from "./components/UserProfilePage";
 import HistoryPage from "./components/HistoryPage";
 import AuthPage from "./components/AuthPage";
 import { supabase } from "./lib/supabaseClient";
@@ -34,7 +35,6 @@ export default function App() {
 
   // ---- App State ----
   const [activePage, setActivePage] = useState("dashboard");
-  const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeys, setApiKeys] = useState({ openai_api_key: "", gemini_api_key: "", groq_api_key: "" });
   const [activeChat, setActiveChat] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState("");
@@ -298,7 +298,6 @@ export default function App() {
       <div className="main-content">
         <TopNav
           activePage={activePage}
-          onOpenApiKeys={() => setShowApiKeys(true)}
           onNavigate={setActivePage}
           userEmail={userEmail}
         />
@@ -397,6 +396,22 @@ export default function App() {
             />
           )}
 
+          {activePage === "api-keys" && (
+            <ApiKeysPage
+              userId={userId}
+              apiKeys={apiKeys}
+              onUpdateKeys={setApiKeys}
+            />
+          )}
+
+          {activePage === "profile" && (
+            <UserProfilePage
+              userEmail={userEmail}
+              onSignOut={handleLogOut}
+              onNavigate={setActivePage}
+            />
+          )}
+
           {/* Placeholder pages for other nav items */}
           {activePage === "saved" && (
             <div className="placeholder-page">
@@ -419,16 +434,6 @@ export default function App() {
           )}
         </div>
       </div>
-
-      {/* ---- API Keys Modal ---- */}
-      {showApiKeys && (
-        <ApiKeysModal
-          keys={apiKeys}
-          onSave={setApiKeys}
-          onClose={() => setShowApiKeys(false)}
-          userId={userId}
-        />
-      )}
     </div>
   );
 }

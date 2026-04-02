@@ -1,11 +1,10 @@
 /**
  * TopNav Component
  * -----------------
- * Horizontal top navigation bar with page tabs, API Keys button,
- * settings icon, and user avatar with initial.
+ * Horizontal top navigation bar with page tabs and user avatar.
  */
 
-export default function TopNav({ activePage, onOpenApiKeys, onNavigate, userEmail }) {
+export default function TopNav({ activePage, onNavigate, userEmail }) {
   const initial = userEmail ? userEmail.charAt(0).toUpperCase() : "U";
 
   return (
@@ -29,16 +28,12 @@ export default function TopNav({ activePage, onOpenApiKeys, onNavigate, userEmai
       {/* Right side */}
       <div className="topnav-right">
         <button
-          className="topnav-btn"
-          onClick={onOpenApiKeys}
-          id="api-keys-btn"
+          className="topnav-avatar"
+          onClick={() => onNavigate?.('profile')}
+          title={userEmail || "Profile"}
         >
-          🔑 API Keys
-        </button>
-
-        <div className="topnav-avatar" title={userEmail || "Profile"}>
           {initial}
-        </div>
+        </button>
       </div>
     </header>
   );

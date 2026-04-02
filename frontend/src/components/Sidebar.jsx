@@ -43,6 +43,15 @@ export default function Sidebar({ activePage, onNavigate, onNewPrompt, onSignOut
         </button>
 
         <button
+          className={`sidebar-nav-item ${activePage === 'api-keys' ? 'active' : ''}`}
+          onClick={() => onNavigate('api-keys')}
+          id="nav-api-keys"
+        >
+          <span className="nav-icon">🔑</span>
+          API Keys
+        </button>
+
+        <button
           className={`sidebar-nav-item ${activePage === 'saved' ? 'active' : ''}`}
           onClick={() => onNavigate('saved')}
           id="nav-saved"
