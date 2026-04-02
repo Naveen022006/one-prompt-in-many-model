@@ -8,7 +8,7 @@
  *   - Routes between Dashboard and History pages
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import TopNav from "./components/TopNav";
 import PromptBox from "./components/PromptBox";
@@ -43,6 +43,8 @@ export default function App() {
   const [promptToReuse, setPromptToReuse] = useState("");
 
   const userId = session?.user?.id;
+  const userEmail = session?.user?.email;
+  const chatEndRef = useRef(null);
 
   // Check if AT LEAST ONE key is configured
   const hasKeys = !!(apiKeys.openai_api_key?.trim() || apiKeys.gemini_api_key?.trim() || apiKeys.groq_api_key?.trim());
@@ -85,6 +87,13 @@ export default function App() {
       loadHistory();
     }
   }, [activePage, userId]);
+
+  // ---- Auto-scroll chat feed to bottom on new messages ----
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeChat]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -290,6 +299,8 @@ export default function App() {
         <TopNav
           activePage={activePage}
           onOpenApiKeys={() => setShowApiKeys(true)}
+          onNavigate={setActivePage}
+          userEmail={userEmail}
         />
 
         <div className="page-content">
@@ -312,7 +323,7 @@ export default function App() {
                   {activeChat.map((turn, idx) => (
                     <div key={idx} className="chat-turn" style={{ marginBottom: "2rem" }}>
                       <div className="chat-user-bubble" style={{ textAlign: "right", marginBottom: "1rem" }}>
-                        <span style={{ background: "var(--bg-card)", padding: "12px 20px", borderRadius: "18px", display: "inline-block", maxWidth: "80%", wordBreak: "break-word" }}>
+                        <span style={{ padding: "12px 20px", borderRadius: "18px", display: "inline-block", maxWidth: "80%", wordBreak: "break-word" }}>
                           {turn.prompt}
                         </span>
                       </div>
@@ -359,6 +370,7 @@ export default function App() {
                       </section>
                     </div>
                   ))}
+                  <div ref={chatEndRef} />
                 </div>
               )}
 

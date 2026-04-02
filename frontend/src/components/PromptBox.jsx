@@ -41,9 +41,10 @@ export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }
     setPrompt(""); // Clear the input field after submitting
   };
 
-  // Submit on Ctrl+Enter
+  // Submit on Enter (Shift+Enter for newline)
   const handleKeyDown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       handleSubmit(e);
     }
   };
