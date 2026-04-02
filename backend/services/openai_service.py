@@ -31,7 +31,7 @@ async def get_gpt_response(prompt: str, api_key: str, timeout: int = 30) -> str:
         client = AsyncOpenAI(api_key=api_key, timeout=timeout)
 
         response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",

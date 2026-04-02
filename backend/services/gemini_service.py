@@ -31,7 +31,7 @@ async def get_gemini_response(prompt: str, api_key: str, timeout: int = 30) -> s
         # Configure the SDK with the provided key (module-level config)
         genai.configure(api_key=api_key)
 
-        # Use the Gemini 1.5 Flash model (fast & capable)
+        # Use the highly affordable Gemini 1.5 Flash model
         model = genai.GenerativeModel("gemini-1.5-flash")
 
         # The SDK is synchronous, so run it in a thread to stay async-friendly

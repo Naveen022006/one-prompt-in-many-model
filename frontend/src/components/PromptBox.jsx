@@ -1,104 +1,98 @@
 /**
  * PromptBox Component
  * --------------------
- * Renders the input form: prompt textarea, API key fields, and submit button.
- * Lifts all state up via the onSubmit callback.
+ * Redesigned to match the AI Hub reference — minimal prompt input area
+ * with model chips and a "Generate Response" button.
  */
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
-export default function PromptBox({ onSubmit, isLoading }) {
-  // Local form state
+export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }) {
   const [prompt, setPrompt] = useState("");
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
+  const textareaRef = useRef(null);
 
-  /**
-   * Handle form submission.
-   * Validates that all fields are filled, then calls the parent handler.
-   */
+  // Pre-fill prompt when reusing from history
+  useEffect(() => {
+    if (reusedPrompt) setPrompt(reusedPrompt);
+  }, [reusedPrompt]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "24px";
+      ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+    }
+  }, [prompt]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Basic client-side validation
-    if (!prompt.trim() || !openaiKey.trim() || !geminiKey.trim()) {
-      alert("Please fill in all fields before submitting.");
+    if (!prompt.trim()) {
+      alert("Please enter a prompt.");
       return;
     }
 
-    onSubmit({
-      prompt: prompt.trim(),
-      openai_api_key: openaiKey.trim(),
-      gemini_api_key: geminiKey.trim(),
-    });
+    if (!hasKeys) {
+      alert("Please configure your API keys first (click 'API Keys' in the top bar).");
+      return;
+    }
+
+    onSubmit(prompt.trim());
+  };
+
+  // Submit on Ctrl+Enter
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      handleSubmit(e);
+    }
   };
 
   return (
-    <section className="prompt-section">
-      <form className="prompt-card" onSubmit={handleSubmit} id="prompt-form">
-        {/* ---- API Key Row ---- */}
-        <div className="input-row">
-          <div className="input-group">
-            <label className="input-label" htmlFor="openai-key">
-              <span className="icon">🔑</span> OpenAI API Key
-            </label>
-            <input
-              id="openai-key"
-              className="text-input"
-              type="password"
-              placeholder="sk-..."
-              value={openaiKey}
-              onChange={(e) => setOpenaiKey(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="input-group">
-            <label className="input-label" htmlFor="gemini-key">
-              <span className="icon">🔑</span> Gemini API Key
-            </label>
-            <input
-              id="gemini-key"
-              className="text-input"
-              type="password"
-              placeholder="AIza..."
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-        </div>
-
-        {/* ---- Prompt Textarea ---- */}
-        <div className="input-group full">
-          <label className="input-label" htmlFor="prompt-input">
-            <span className="icon">💬</span> Your Prompt
-          </label>
+    <section className="prompt-area">
+      <form onSubmit={handleSubmit} id="prompt-form">
+        {/* Prompt Input */}
+        <div className="prompt-input-wrapper">
+          <span className="prompt-input-icon">✦</span>
           <textarea
+            ref={textareaRef}
             id="prompt-input"
             className="prompt-textarea"
-            placeholder="Ask anything… e.g. &quot;Explain quantum computing in simple terms&quot;"
+            placeholder="Ask anything..."
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            rows={4}
+            onKeyDown={handleKeyDown}
+            rows={1}
           />
         </div>
 
-        {/* ---- Submit ---- */}
-        <button
-          id="submit-btn"
-          className="submit-btn"
-          type="submit"
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <span className="spinner" /> Generating…
-            </>
-          ) : (
-            <>🚀 Ask All Models</>
-          )}
-        </button>
+        {/* Controls Row */}
+        <div className="prompt-controls">
+          {/* Model Chips */}
+          <div className="model-chips">
+            <span className="model-chip active">GPT-4o Mini</span>
+            <span className="model-chip active-purple">Gemini 1.5</span>
+          </div>
+
+          {/* Generate Button */}
+          <button
+            id="generate-btn"
+            className="generate-btn"
+            type="submit"
+            disabled={isLoading || !prompt.trim()}
+          >
+            {isLoading ? (
+              <>
+                <span className="spinner" />
+                Processing…
+              </>
+            ) : (
+              <>
+                Generate Response <span className="btn-icon">⚡</span>
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </section>
   );

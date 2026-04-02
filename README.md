@@ -1,6 +1,6 @@
-# 🚀 AI Multi-Model Aggregator
+# 🚀 AI Multi-Model Aggregator (AI Hub)
 
-**One Prompt, Multiple Minds** — Send a single prompt and compare responses from ChatGPT (GPT-3.5 Turbo) and Google Gemini (1.5 Flash) side by side.
+**One Prompt, Multiple Minds** — Send a single prompt and compare responses from ChatGPT and Google Gemini side by side. With Supabase integration for persistent API keys and conversation history.
 
 ---
 
@@ -9,24 +9,33 @@
 ```
 all in one model/
 ├── backend/
-│   ├── main.py                    # FastAPI entry point
-│   ├── requirements.txt           # Python dependencies
+│   ├── main.py                         # FastAPI entry point (all endpoints)
+│   ├── requirements.txt                # Python dependencies
+│   ├── .env                            # Supabase credentials (edit this!)
 │   └── services/
 │       ├── __init__.py
-│       ├── openai_service.py      # Async OpenAI integration
-│       └── gemini_service.py      # Async Gemini integration
+│       ├── openai_service.py           # Async OpenAI integration
+│       ├── gemini_service.py           # Async Gemini integration
+│       └── supabase_service.py         # Supabase CRUD (keys + history)
 ├── frontend/
 │   ├── index.html
 │   ├── package.json
 │   ├── vite.config.js
 │   └── src/
-│       ├── main.jsx               # React entry point
-│       ├── index.css              # Global design system
-│       ├── App.jsx                # Root component
-│       ├── App.css                # Component styles
+│       ├── main.jsx                    # React entry point
+│       ├── index.css                   # Design system (dark mode tokens)
+│       ├── App.jsx                     # Root component (routing + state)
+│       ├── App.css                     # Component styles
+│       ├── lib/
+│       │   └── supabaseHelper.js       # User ID + backend API helpers
 │       └── components/
-│           ├── PromptBox.jsx      # Input form component
-│           └── ResponseBox.jsx    # Response display component
+│           ├── Sidebar.jsx             # Left navigation
+│           ├── TopNav.jsx              # Top navigation bar
+│           ├── PromptBox.jsx           # Prompt input + model chips
+│           ├── ResponseCard.jsx        # Individual model response card
+│           ├── BestAnswer.jsx          # Combined answer section
+│           ├── ApiKeysModal.jsx        # API key management modal
+│           └── HistoryPage.jsx         # Conversation history page
 └── README.md
 ```
 
@@ -36,28 +45,80 @@ all in one model/
 
 - **Python 3.10+** — [Download](https://www.python.org/downloads/)
 - **Node.js 18+** — [Download](https://nodejs.org/)
+- **Supabase Project** — [Create free](https://supabase.com) (for persistent storage)
 - **API Keys**:
   - OpenAI API key → [Get one here](https://platform.openai.com/api-keys)
   - Google Gemini API key → [Get one here](https://aistudio.google.com/app/apikey)
 
 ---
 
+## 🗄️ Supabase Setup
+
+### 1. Create a project at [supabase.com](https://supabase.com)
+
+### 2. Run this SQL in the SQL Editor (Dashboard → SQL Editor → New Query):
+
+```sql
+-- API Keys table
+CREATE TABLE api_keys (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK (provider IN ('openai', 'gemini')),
+  api_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, provider)
+);
+
+-- Conversations table
+CREATE TABLE conversations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  gpt_response TEXT,
+  gpt_error TEXT,
+  gemini_response TEXT,
+  gemini_error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for fast lookups
+CREATE INDEX idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX idx_conversations_user ON conversations(user_id);
+CREATE INDEX idx_conversations_created ON conversations(created_at DESC);
+
+-- Disable RLS for MVP (no auth system)
+ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+
+-- Allow all operations for anon key (MVP only — tighten in production)
+CREATE POLICY "Allow all for api_keys" ON api_keys FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for conversations" ON conversations FOR ALL USING (true) WITH CHECK (true);
+```
+
+### 3. Get your credentials from Project Settings → API:
+- **Project URL** (e.g. `https://xxxxx.supabase.co`)
+- **anon public key**
+
+### 4. Edit `backend/.env`:
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-public-key
+```
+
+---
+
 ## 🏃 Running Locally
 
-### 1. Start the Backend (FastAPI)
+### Terminal 1 — Backend (FastAPI)
 
 ```bash
-# Navigate to the backend folder
 cd backend
 
-# Create a virtual environment (recommended)
+# Create & activate virtual environment
 python -m venv venv
-
-# Activate the virtual environment
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
 
 # Install dependencies
 pip install -r requirements.txt
@@ -66,84 +127,48 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The API will be available at **http://localhost:8000**.  
-Interactive docs at **http://localhost:8000/docs**.
+Backend runs at **http://localhost:8000** (API docs at `/docs`).
 
-### 2. Start the Frontend (React + Vite)
-
-Open a **new terminal**:
+### Terminal 2 — Frontend (React + Vite)
 
 ```bash
-# Navigate to the frontend folder
 cd frontend
-
-# Install dependencies (first time only)
 npm install
-
-# Start the dev server
 npm run dev
 ```
 
-The app will open at **http://localhost:5173**.
+Frontend runs at **http://localhost:5173**.
 
 ---
 
 ## 🔧 API Reference
 
-### `GET /`
-
-Health check endpoint.
-
-**Response:**
-```json
-{ "status": "ok", "message": "AI Multi-Model Aggregator is running 🚀" }
-```
-
-### `POST /ask`
-
-Send a prompt to all models simultaneously.
-
-**Request Body:**
-```json
-{
-  "prompt": "Explain quantum computing in simple terms",
-  "openai_api_key": "sk-...",
-  "gemini_api_key": "AIza..."
-}
-```
-
-**Response:**
-```json
-{
-  "gpt": {
-    "text": "Quantum computing uses...",
-    "error": null
-  },
-  "gemini": {
-    "text": "Quantum computing is...",
-    "error": null
-  }
-}
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check (shows Supabase connection status) |
+| `POST` | `/ask` | Send prompt to GPT + Gemini (auto-saves to Supabase) |
+| `GET` | `/api-keys/{user_id}` | Retrieve saved API keys |
+| `POST` | `/api-keys` | Save/update an API key |
+| `DELETE` | `/api-keys/{user_id}/{provider}` | Delete an API key |
+| `GET` | `/history/{user_id}` | List past conversations |
+| `DELETE` | `/history/{user_id}/{id}` | Delete a conversation |
 
 ---
 
-## ⚡ Key Design Decisions
+## ⚡ How It Works
 
-| Decision | Rationale |
-|---|---|
-| **Async API calls** | Both model APIs are called concurrently via `asyncio.gather`, so total response time ≈ slowest model, not the sum. |
-| **Per-request API keys** | No keys stored on the server — the user provides them each time, keeping the MVP simple and secure. |
-| **Per-model error handling** | If one model fails, the other still returns a response. Errors are shown per-card, not globally. |
-| **No database** | MVP scope — everything is stateless. |
+1. **User Identity** — A UUID is generated and stored in `localStorage`. This ID links your API keys and history in Supabase.
+2. **API Keys** — Saved to Supabase via the backend. Auto-loaded when you return.
+3. **Conversations** — Every `/ask` request auto-saves the prompt + responses to Supabase.
+4. **History** — Click "History" in the sidebar to browse, search, expand, reuse, or delete past conversations.
 
 ---
 
 ## 📝 Notes
 
-- API keys are **never stored** — they're sent per request and used in memory only.
-- The backend uses CORS `allow_origins=["*"]` for development. Tighten this for production.
-- The OpenAI service uses `gpt-3.5-turbo`; the Gemini service uses `gemini-1.5-flash`.
+- Works **without Supabase** too — the app gracefully falls back to in-memory mode if `.env` is not configured.
+- API keys are stored in **plain text** in Supabase for this MVP. Use encryption for production.
+- CORS is set to `allow_origins=["*"]` for development. Restrict in production.
 
 ---
 
