@@ -67,6 +67,7 @@ class AskRequest(BaseModel):
     gemini_api_key: str = Field(default="", description="Google Gemini API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     user_id: str = Field(default="", description="Optional user ID for saving conversation history")
+    session_id: str | None = Field(default=None, description="Optional conversation thread/session ID")
 
 
 class ModelResponse(BaseModel):
@@ -81,6 +82,7 @@ class AskResponse(BaseModel):
     gemini: ModelResponse
     groq: ModelResponse
     conversation_id: str | None = None  # ID of saved conversation (if Supabase is configured)
+    session_id: str | None = None       # ID linking multiple turns
 
 
 class SaveApiKeyRequest(BaseModel):
@@ -183,15 +185,20 @@ async def ask(request: AskRequest):
             gemini_error=gemini_response.error,
             groq_response=groq_response.text,
             groq_error=groq_response.error,
+            session_id=request.session_id,
         )
         if saved:
             conversation_id = saved.get("id")
+            # If the frontend didn't pass a session_id, fallback to the row ID so future ones can use it.
+            if not request.session_id:
+                request.session_id = conversation_id
 
     return AskResponse(
         gpt=gpt_response,
         gemini=gemini_response,
         groq=groq_response,
         conversation_id=conversation_id,
+        session_id=request.session_id,
     )
 
 

@@ -13,7 +13,6 @@ import Sidebar from "./components/Sidebar";
 import TopNav from "./components/TopNav";
 import PromptBox from "./components/PromptBox";
 import ResponseCard from "./components/ResponseCard";
-import BestAnswer from "./components/BestAnswer";
 import ApiKeysModal from "./components/ApiKeysModal";
 import HistoryPage from "./components/HistoryPage";
 import AuthPage from "./components/AuthPage";
@@ -38,6 +37,7 @@ export default function App() {
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeys, setApiKeys] = useState({ openai_api_key: "", gemini_api_key: "", groq_api_key: "" });
   const [activeChat, setActiveChat] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState("");
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [promptToReuse, setPromptToReuse] = useState("");
@@ -119,6 +119,7 @@ export default function App() {
    */
   const handleNewPrompt = useCallback(() => {
     setActiveChat([]);
+    setCurrentSessionId(crypto.randomUUID());
     setPromptToReuse("");
     setActivePage("dashboard");
     setTimeout(() => {
@@ -133,6 +134,10 @@ export default function App() {
    */
   const handleSubmit = useCallback(
     async (prompt) => {
+      // Ensure we have a session ID
+      const sessionIdToSend = currentSessionId || crypto.randomUUID();
+      if (!currentSessionId) setCurrentSessionId(sessionIdToSend);
+
       // Append a loading turn to the chat
       setActiveChat((prev) => [...prev, { prompt, isLoading: true, responses: null }]);
       setPromptToReuse(""); // Clear reuse after submitting
@@ -153,8 +158,9 @@ export default function App() {
             history: historyPayload,
             openai_api_key: apiKeys.openai_api_key,
             gemini_api_key: apiKeys.gemini_api_key,
-            groq_api_key: apiKeys.groq_api_key, // Include groq key
-            user_id: userId, // Include authenticated user ID for auto-save
+            groq_api_key: apiKeys.groq_api_key,
+            user_id: userId,
+            session_id: sessionIdToSend,
           }),
         });
 
@@ -213,12 +219,41 @@ export default function App() {
   };
 
   /**
+   * Handle continuing a past conversation thread.
+   */
+  const handleContinueChat = (threadTurns) => {
+    // threadTurns is an array of conversation turns from oldest to newest in a given session
+    const historicalChat = threadTurns.map(conv => ({
+      prompt: conv.prompt,
+      isLoading: false,
+      responses: {
+        gpt: { text: conv.gpt_response, error: conv.gpt_error },
+        gemini: { text: conv.gemini_response, error: conv.gemini_error },
+        groq: { text: conv.groq_response, error: conv.groq_error },
+      },
+    }));
+    setActiveChat(historicalChat);
+    
+    // Set the session ID so future prompts append to the same thread in DB
+    const lastTurn = threadTurns[threadTurns.length - 1];
+    setCurrentSessionId(lastTurn.session_id || lastTurn.id);
+    
+    setPromptToReuse(""); 
+    setActivePage("dashboard");
+    setTimeout(() => {
+      const input = document.getElementById("prompt-input");
+      if (input) input.focus();
+    }, 100);
+  };
+
+  /**
    * Handle global signs out
    */
   const handleLogOut = async () => {
     await supabase.auth.signOut();
     setApiKeys({ openai_api_key: "", gemini_api_key: "", groq_api_key: "" });
     setActiveChat([]);
+    setCurrentSessionId("");
     setHistory([]);
   };
 
@@ -320,13 +355,7 @@ export default function App() {
                           />
                         </div>
 
-                        {!turn.isLoading && turn.responses && (
-                          <BestAnswer
-                            gptResponse={turn.responses.gpt}
-                            geminiResponse={turn.responses.gemini}
-                            groqResponse={turn.responses.groq}
-                          />
-                        )}
+
                       </section>
                     </div>
                   ))}
@@ -351,6 +380,7 @@ export default function App() {
               conversations={history}
               onDelete={handleDeleteConversation}
               onReuse={handleReusePrompt}
+              onContinue={handleContinueChat}
               isLoading={historyLoading}
             />
           )}
