@@ -37,8 +37,8 @@ export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }
       alert("Please configure your API keys first (click 'API Keys' in the top bar).");
       return;
     }
-
     onSubmit(prompt.trim());
+    setPrompt(""); // Clear the input field after submitting
   };
 
   // Submit on Ctrl+Enter

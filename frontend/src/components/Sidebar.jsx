@@ -5,7 +5,7 @@
  * Shows brand, "New Prompt" button, navigation items, and bottom links.
  */
 
-export default function Sidebar({ activePage, onNavigate, onNewPrompt }) {
+export default function Sidebar({ activePage, onNavigate, onNewPrompt, onSignOut }) {
   return (
     <aside className="sidebar">
       {/* Brand */}
@@ -70,6 +70,10 @@ export default function Sidebar({ activePage, onNavigate, onNewPrompt }) {
         <button className="sidebar-nav-item" id="nav-privacy">
           <span className="nav-icon">🔒</span>
           Privacy
+        </button>
+        <button className="sidebar-nav-item" id="nav-signout" onClick={onSignOut} style={{ color: "var(--red-primary)" }}>
+          <span className="nav-icon">⏻</span>
+          Sign Out
         </button>
       </div>
     </aside>

@@ -25,8 +25,8 @@ dist-ssr
 *.sw?
 
 
-.test_ask.py
-.test_db.py
-.test_rest.py
-.test_supabase.py
-.out.txt
+test_ask.py
+test_db.py
+test_rest.py
+test_supabase.py
+out.txt

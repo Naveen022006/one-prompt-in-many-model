@@ -17,10 +17,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import asyncio
+import os
 from dotenv import load_dotenv
 
-# Load .env before anything else
-load_dotenv()
+# Load .env from the parent directory (root of the project)
+dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+load_dotenv(dotenv_path)
 
 from services.openai_service import get_gpt_response
 from services.gemini_service import get_gemini_response
@@ -60,6 +62,7 @@ app.add_middleware(
 class AskRequest(BaseModel):
     """Payload the client sends when asking a question."""
     prompt: str = Field(..., min_length=1, max_length=4000, description="The user's prompt")
+    history: list[dict] = Field(default=[], description="List of previous conversation turns")
     openai_api_key: str = Field(default="", description="OpenAI API key")
     gemini_api_key: str = Field(default="", description="Google Gemini API key")
     groq_api_key: str = Field(default="", description="Groq API key")
@@ -85,6 +88,13 @@ class SaveApiKeyRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     provider: str = Field(..., pattern="^(openai|gemini|groq)$")
     api_key: str = Field(..., min_length=1)
+
+
+class MigrateRequest(BaseModel):
+    """Payload to migrate local user data to auth user ID."""
+    old_id: str = Field(..., min_length=1)
+    new_id: str = Field(..., min_length=1)
+
 
 
 # ---------------------------------------------------------------------------
@@ -113,10 +123,30 @@ async def ask(request: AskRequest):
     configured, the conversation is automatically saved.
     """
 
+    # Map history to individual model formats
+    gpt_history = []
+    gemini_history = []
+    groq_history = []
+
+    for turn in request.history:
+        pt = turn.get("prompt")
+        if pt:
+            gpt_history.append({"role": "user", "content": pt})
+            gemini_history.append({"role": "user", "content": pt})
+            groq_history.append({"role": "user", "content": pt})
+        
+        # Append assistant turns only if the model answered previously
+        if turn.get("gpt_response") and not turn.get("gpt_response").startswith("Error"):
+            gpt_history.append({"role": "assistant", "content": turn.get("gpt_response")})
+        if turn.get("gemini_response") and not turn.get("gemini_response").startswith("Error"):
+            gemini_history.append({"role": "assistant", "content": turn.get("gemini_response")})
+        if turn.get("groq_response") and not turn.get("groq_response").startswith("Error"):
+            groq_history.append({"role": "assistant", "content": turn.get("groq_response")})
+
     # Fire all 3 requests concurrently
-    gpt_task = get_gpt_response(request.prompt, request.openai_api_key)
-    gemini_task = get_gemini_response(request.prompt, request.gemini_api_key)
-    groq_task = get_groq_response(request.prompt, request.groq_api_key)
+    gpt_task = get_gpt_response(request.prompt, request.openai_api_key, history=gpt_history)
+    gemini_task = get_gemini_response(request.prompt, request.gemini_api_key, history=gemini_history)
+    groq_task = get_groq_response(request.prompt, request.groq_api_key, history=groq_history)
 
     gpt_result, gemini_result, groq_result = await asyncio.gather(
         gpt_task, gemini_task, groq_task, return_exceptions=True
@@ -212,6 +242,22 @@ async def remove_conversation(user_id: str, conversation_id: str):
     """Delete a specific conversation."""
     delete_conversation(user_id, conversation_id)
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Routes — Migration
+# ---------------------------------------------------------------------------
+
+from services.supabase_service import migrate_user_data
+
+@app.post("/migrate", tags=["Migration"])
+async def migrate(request: MigrateRequest):
+    """Migrate all keys and history from a local UUID to an authenticated UUID."""
+    success = migrate_user_data(request.old_id, request.new_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to migrate data.")
+    return {"status": "migrated"}
+
 
 
 # ---------------------------------------------------------------------------

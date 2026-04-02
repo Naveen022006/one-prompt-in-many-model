@@ -9,8 +9,9 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load .env from the parent directory
+dotenv_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+load_dotenv(dotenv_path)
 
 # ---------------------------------------------------------------------------
 # Initialize Supabase client
@@ -163,4 +164,22 @@ def delete_conversation(user_id: str, conversation_id: str) -> bool:
         return True
     except Exception as e:
         print(f"⚠️ Supabase delete_conversation error: {e}")
+        return False
+
+# ---------------------------------------------------------------------------
+# Migration
+# ---------------------------------------------------------------------------
+
+def migrate_user_data(old_user_id: str, new_user_id: str) -> bool:
+    if not is_connected():
+        return False
+        
+    try:
+        # Migrate API Keys
+        supabase.table("api_keys").update({"user_id": new_user_id}).eq("user_id", old_user_id).execute()
+        # Migrate Conversations
+        supabase.table("conversations").update({"user_id": new_user_id}).eq("user_id", old_user_id).execute()
+        return True
+    except Exception as e:
+        print(f"⚠️ Supabase migrate error: {e}")
         return False

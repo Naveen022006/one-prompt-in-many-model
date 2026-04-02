@@ -10,13 +10,14 @@ import google.generativeai as genai
 from google.api_core.exceptions import InvalidArgument, PermissionDenied, DeadlineExceeded
 
 
-async def get_gemini_response(prompt: str, api_key: str, timeout: int = 30) -> str:
+async def get_gemini_response(prompt: str, api_key: str, history: list = None, timeout: int = 30) -> str:
     """
     Send a prompt to Google Gemini and return the response text.
 
     Args:
         prompt:  The user's prompt string.
         api_key: A valid Google Gemini API key.
+        history: Optional list of previous messages `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`
         timeout: Maximum seconds to wait for a response (default 30).
 
     Returns:
@@ -37,9 +38,16 @@ async def get_gemini_response(prompt: str, api_key: str, timeout: int = 30) -> s
         # Use the highly affordable Gemini 1.5 Flash model
         model = genai.GenerativeModel("gemini-1.5-flash")
 
+        gemini_history = []
+        if history:
+            for msg in history:
+                role = "model" if msg["role"] == "assistant" else "user"
+                gemini_history.append({"role": role, "parts": [msg["content"]]})
+
         # The SDK is synchronous, so run it in a thread to stay async-friendly
+        chat = model.start_chat(history=gemini_history)
         response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt),
+            asyncio.to_thread(chat.send_message, prompt),
             timeout=timeout,
         )
 

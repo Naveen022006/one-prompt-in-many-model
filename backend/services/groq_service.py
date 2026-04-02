@@ -9,13 +9,14 @@ import asyncio
 from groq import AsyncGroq, APIError, AuthenticationError, APITimeoutError
 
 
-async def get_groq_response(prompt: str, api_key: str, timeout: int = 30) -> str:
+async def get_groq_response(prompt: str, api_key: str, history: list = None, timeout: int = 30) -> str:
     """
-    Send a prompt to Groq (using llama3-8b-8192) and return the response text.
+    Send a prompt to Groq (using llama-3.1-8b-instant) and return the response text.
 
     Args:
         prompt:  The user's prompt string.
         api_key: A valid Groq API key.
+        history: Optional list of previous messages `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`
         timeout: Maximum seconds to wait for a response (default 30).
 
     Returns:
@@ -33,16 +34,21 @@ async def get_groq_response(prompt: str, api_key: str, timeout: int = 30) -> str
         # Create a client scoped to this single request
         client = AsyncGroq(api_key=api_key.strip(), timeout=timeout)
 
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Provide clear, concise answers.",
+            }
+        ]
+        if history:
+            for msg in history:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": prompt})
+
         # Llama 3.1 8B Instant is Groq's current recommended fast model
         response = await client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant. Provide clear, concise answers.",
-                },
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
             max_tokens=1024,
             temperature=0.7,
         )
