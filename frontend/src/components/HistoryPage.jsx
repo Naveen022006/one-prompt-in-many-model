@@ -142,7 +142,14 @@ export default function HistoryPage({ conversations, onDelete, onReuse, isLoadin
                   {conv.gemini_error && (
                     <span className="history-model-badge error">Gemini Error</span>
                   )}
+                  {conv.groq_response && (
+                    <span className="history-model-badge" style={{background: 'var(--orange-dim)', color: 'var(--orange-primary)', border: '1px solid var(--orange-border)'}}>Groq</span>
+                  )}
+                  {conv.groq_error && (
+                    <span className="history-model-badge error">Groq Error</span>
+                  )}
                 </div>
+
 
                 {/* Expanded responses */}
                 {isExpanded && (
@@ -173,6 +180,20 @@ export default function HistoryPage({ conversations, onDelete, onReuse, isLoadin
                       <div className="history-response-block error">
                         <div className="history-response-label">Gemini Error</div>
                         <div className="history-response-text">{conv.gemini_error}</div>
+                      </div>
+                    )}
+                    {conv.groq_response && (
+                      <div className="history-response-block">
+                        <div className="history-response-label">Llama 3 (Groq)</div>
+                        <div className="history-response-text">
+                          {conv.groq_response}
+                        </div>
+                      </div>
+                    )}
+                    {conv.groq_error && (
+                      <div className="history-response-block error">
+                        <div className="history-response-label">Groq Error</div>
+                        <div className="history-response-text">{conv.groq_error}</div>
                       </div>
                     )}
                   </div>

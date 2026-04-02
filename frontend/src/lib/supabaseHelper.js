@@ -35,13 +35,19 @@ export function getUserId() {
 /**
  * Fetch saved API keys from the backend.
  * @returns {{ openai?: string, gemini?: string }}
+ * @returns {{ openai?: string, gemini?: string, groq?: string }}
  */
 export async function fetchApiKeys(userId) {
   try {
     const res = await fetch(`${API_URL}/api-keys/${userId}`);
     if (!res.ok) return {};
     const data = await res.json();
-    return data.keys || {};
+    const keys = data.keys || {};
+    return {
+      openai: keys.openai || null,
+      gemini: keys.gemini || null,
+      groq: keys.groq || null,
+    };
   } catch {
     console.warn("Could not fetch API keys from backend");
     return {};

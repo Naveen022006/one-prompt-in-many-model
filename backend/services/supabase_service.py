@@ -105,6 +105,8 @@ def save_conversation(
     gpt_error: str | None,
     gemini_response: str | None,
     gemini_error: str | None,
+    groq_response: str | None = None,
+    groq_error: str | None = None,
 ) -> dict | None:
     if not is_connected():
         return None
@@ -120,6 +122,8 @@ def save_conversation(
                     "gpt_error": gpt_error,
                     "gemini_response": gemini_response,
                     "gemini_error": gemini_error,
+                    "groq_response": groq_response,
+                    "groq_error": groq_error,
                 }
             )
             .execute()

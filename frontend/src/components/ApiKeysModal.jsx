@@ -12,8 +12,10 @@ import { fetchApiKeys, saveApiKey } from "../lib/supabaseHelper";
 export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
   const [openaiKey, setOpenaiKey] = useState(keys.openai_api_key || "");
   const [geminiKey, setGeminiKey] = useState(keys.gemini_api_key || "");
+  const [groqKey, setGroqKey] = useState(keys.groq_api_key || "");
   const [showOpenai, setShowOpenai] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
+  const [showGroq, setShowGroq] = useState(false);
   const [isLoadingKeys, setIsLoadingKeys] = useState(true);
   const [saveStatus, setSaveStatus] = useState(""); // "", "saving", "saved"
 
@@ -24,6 +26,7 @@ export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
       const saved = await fetchApiKeys(userId);
       if (saved.openai) setOpenaiKey(saved.openai);
       if (saved.gemini) setGeminiKey(saved.gemini);
+      if (saved.groq) setGroqKey(saved.groq);
       setIsLoadingKeys(false);
     }
     if (userId) loadKeys();
@@ -42,6 +45,9 @@ export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
       if (geminiKey.trim()) {
         promises.push(saveApiKey(userId, "gemini", geminiKey.trim()));
       }
+      if (groqKey.trim()) {
+        promises.push(saveApiKey(userId, "groq", groqKey.trim()));
+      }
       await Promise.all(promises);
     }
 
@@ -49,6 +55,7 @@ export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
     onSave({
       openai_api_key: openaiKey.trim(),
       gemini_api_key: geminiKey.trim(),
+      groq_api_key: groqKey.trim(),
     });
 
     setSaveStatus("saved");
@@ -81,6 +88,9 @@ export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
 
         {isLoadingKeys ? (
           <div className="api-keys-loading">
+            <div className="api-key-card">
+              <div className="skeleton" style={{ width: '100%', height: '40px' }} />
+            </div>
             <div className="api-key-card">
               <div className="skeleton" style={{ width: '100%', height: '40px' }} />
             </div>
@@ -147,6 +157,36 @@ export default function ApiKeysModal({ keys, onSave, onClose, userId }) {
               </div>
               <span className={`api-key-status ${geminiKey.trim() ? 'active' : 'empty'}`}>
                 {geminiKey.trim() ? 'Active' : 'Empty'}
+              </span>
+            </div>
+
+            {/* Groq */}
+            <div className="api-key-card">
+              <div className="api-key-icon" style={{ background: "var(--orange-primary)", color: "#fff", padding: "0.4rem 0.5rem", borderRadius: "8px", fontWeight: "bold" }}>G</div>
+              <div className="api-key-info">
+                <span className="api-key-name">Groq</span>
+                <span className="api-key-desc">Llama 3 ultra-fast inference</span>
+              </div>
+              <div className="api-key-input-wrapper">
+                <input
+                  id="modal-groq-key"
+                  className="api-key-input"
+                  type={showGroq ? "text" : "password"}
+                  placeholder="Enter Groq API Key"
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                  autoComplete="off"
+                />
+                <button
+                  className="api-key-toggle"
+                  onClick={() => setShowGroq(!showGroq)}
+                  title={showGroq ? "Hide key" : "Show key"}
+                >
+                  {showGroq ? "🙈" : "👁️"}
+                </button>
+              </div>
+              <span className={`api-key-status ${groqKey.trim() ? 'active' : 'empty'}`}>
+                {groqKey.trim() ? 'Active' : 'Empty'}
               </span>
             </div>
           </>

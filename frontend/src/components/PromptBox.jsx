@@ -71,7 +71,8 @@ export default function PromptBox({ onSubmit, isLoading, hasKeys, reusedPrompt }
           {/* Model Chips */}
           <div className="model-chips">
             <span className="model-chip active">GPT-4o Mini</span>
-            <span className="model-chip active-purple">Gemini 1.5</span>
+            <span className="model-chip active-purple">Gemini 1.5 Flash</span>
+            <span className="model-chip active-orange">Llama 3 (Groq)</span>
           </div>
 
           {/* Generate Button */}

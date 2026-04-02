@@ -5,15 +5,16 @@
  * combining insights from both models — matching Image 1 reference.
  */
 
-export default function BestAnswer({ gptResponse, geminiResponse }) {
+export default function BestAnswer({ gptResponse, geminiResponse, groqResponse }) {
   // Only show when we have at least one successful response
   const hasGpt = gptResponse?.text;
   const hasGemini = geminiResponse?.text;
-  if (!hasGpt && !hasGemini) return null;
+  const hasGroq = groqResponse?.text;
+  if (!hasGpt && !hasGemini && !hasGroq) return null;
 
   // Build a simple synthesis summary
-  const modelCount = [hasGpt, hasGemini].filter(Boolean).length;
-  const modelNames = [hasGpt && "GPT-4o Mini", hasGemini && "Gemini 1.5 Flash"].filter(Boolean).join(" and ");
+  const modelCount = [hasGpt, hasGemini, hasGroq].filter(Boolean).length;
+  const modelNames = [hasGpt && "GPT-4o Mini", hasGemini && "Gemini 1.5 Flash", hasGroq && "Llama 3 (Groq)"].filter(Boolean).join(", ").replace(/, ([^,]*)$/, ' and $1');
 
   return (
     <section className="best-answer-section" id="best-answer">
@@ -33,17 +34,17 @@ export default function BestAnswer({ gptResponse, geminiResponse }) {
         <div className="insight-pill">
           <div className="insight-pill-title green">Response Quality</div>
           <div className="insight-pill-text">
-            {modelCount === 2
-              ? "Both models provided substantive responses with complementary viewpoints."
+            {modelCount >= 2
+              ? "Multiple models provided substantive responses with complementary viewpoints."
               : `${modelNames} provided a detailed response.`}
           </div>
         </div>
         <div className="insight-pill">
           <div className="insight-pill-title purple">Model Coverage</div>
           <div className="insight-pill-text">
-            {modelCount === 2
-              ? "Full coverage achieved — GPT and Gemini both responded successfully."
-              : "Partial coverage — one model encountered an issue."}
+            {modelCount === 3
+              ? "Full coverage achieved — GPT, Gemini, and Groq all responded successfully."
+              : `Partial coverage — ${modelCount} out of 3 models returned successfully.`}
           </div>
         </div>
         <div className="insight-pill">
@@ -56,16 +57,16 @@ export default function BestAnswer({ gptResponse, geminiResponse }) {
 
       {/* Synthesis body */}
       <div className="best-answer-body">
-        {modelCount === 2 ? (
+        {modelCount >= 2 ? (
           <>
-            The convergence of these distinct model strengths suggests reviewing both responses
+            The convergence of these distinct model strengths suggests reviewing all responses
             side by side. <strong>{modelNames}</strong> may emphasize different aspects — look for
             areas of agreement for highest confidence, and divergent points for deeper exploration.
           </>
         ) : (
           <>
             The response from <strong>{modelNames}</strong> provides a solid foundation. Consider
-            configuring the other model's API key to enable full comparative analysis.
+            configuring additional API keys to enable full comparative analysis.
           </>
         )}
       </div>
@@ -75,7 +76,7 @@ export default function BestAnswer({ gptResponse, geminiResponse }) {
         <button
           className="ba-action-btn"
           onClick={() => {
-            const text = `GPT Response:\n${gptResponse?.text || 'N/A'}\n\nGemini Response:\n${geminiResponse?.text || 'N/A'}`;
+            const text = `GPT Response:\n${gptResponse?.text || 'N/A'}\n\nGemini Response:\n${geminiResponse?.text || 'N/A'}\n\nGroq Response:\n${groqResponse?.text || 'N/A'}`;
             navigator.clipboard.writeText(text);
           }}
         >

@@ -59,11 +59,12 @@ all in one model/
 ### 2. Run this SQL in the SQL Editor (Dashboard → SQL Editor → New Query):
 
 ```sql
+```sql
 -- API Keys table
 CREATE TABLE api_keys (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT NOT NULL,
-  provider TEXT NOT NULL CHECK (provider IN ('openai', 'gemini')),
+  provider TEXT NOT NULL CHECK (provider IN ('openai', 'gemini', 'groq')),
   api_key TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -79,6 +80,8 @@ CREATE TABLE conversations (
   gpt_error TEXT,
   gemini_response TEXT,
   gemini_error TEXT,
+  groq_response TEXT,
+  groq_error TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

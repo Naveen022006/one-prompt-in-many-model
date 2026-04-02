@@ -31,24 +31,25 @@ export default function App() {
   const [userId] = useState(() => getUserId()); // Persistent UUID
   const [activePage, setActivePage] = useState("dashboard");
   const [showApiKeys, setShowApiKeys] = useState(false);
-  const [apiKeys, setApiKeys] = useState({ openai_api_key: "", gemini_api_key: "" });
+  const [apiKeys, setApiKeys] = useState({ openai_api_key: "", gemini_api_key: "", groq_api_key: "" });
   const [responses, setResponses] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [promptToReuse, setPromptToReuse] = useState("");
 
-  // Check if both keys are configured
-  const hasKeys = apiKeys.openai_api_key.trim() && apiKeys.gemini_api_key.trim();
+  // Check if AT LEAST ONE key is configured
+  const hasKeys = !!(apiKeys.openai_api_key?.trim() || apiKeys.gemini_api_key?.trim() || apiKeys.groq_api_key?.trim());
 
   // ---- Auto-load saved API keys on startup ----
   useEffect(() => {
     async function loadSavedKeys() {
       const saved = await fetchApiKeys(userId);
-      if (saved.openai || saved.gemini) {
+      if (saved.openai || saved.gemini || saved.groq) {
         setApiKeys({
           openai_api_key: saved.openai || "",
           gemini_api_key: saved.gemini || "",
+          groq_api_key: saved.groq || "",
         });
       }
     }
@@ -100,6 +101,7 @@ export default function App() {
             prompt,
             openai_api_key: apiKeys.openai_api_key,
             gemini_api_key: apiKeys.gemini_api_key,
+            groq_api_key: apiKeys.groq_api_key, // Include groq key
             user_id: userId, // Include user ID for auto-save
           }),
         });
@@ -116,6 +118,7 @@ export default function App() {
         setResponses({
           gpt: { text: null, error: err.message },
           gemini: { text: null, error: err.message },
+          groq: { text: null, error: err.message },
         });
       } finally {
         setIsLoading(false);
@@ -210,6 +213,15 @@ export default function App() {
                       response={responses?.gemini}
                       isLoading={isLoading}
                     />
+                    <ResponseCard
+                      modelName="Llama 3 (Groq)"
+                      provider="Groq"
+                      badge="Ultra-Fast"
+                      badgeClass="best-reasoning" /* Reusing class for color */
+                      dotColor="orange"
+                      response={responses?.groq}
+                      isLoading={isLoading}
+                    />
                   </div>
 
                   {/* ---- Best Combined Answer ---- */}
@@ -217,6 +229,7 @@ export default function App() {
                     <BestAnswer
                       gptResponse={responses.gpt}
                       geminiResponse={responses.gemini}
+                      groqResponse={responses.groq}
                     />
                   )}
                 </section>

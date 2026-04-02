@@ -5,7 +5,7 @@ Main entry point for the API server.
 
 Endpoints:
   GET  /                              → Health check
-  POST /ask                           → Send prompt to GPT & Gemini (auto-saves to Supabase)
+  POST /ask                           → Send prompt to GPT, Gemini, & Groq
   GET  /api-keys/{user_id}            → Retrieve saved API keys
   POST /api-keys                      → Save/update an API key
   DELETE /api-keys/{user_id}/{provider} → Delete an API key
@@ -24,6 +24,7 @@ load_dotenv()
 
 from services.openai_service import get_gpt_response
 from services.gemini_service import get_gemini_response
+from services.groq_service import get_groq_response
 from services.supabase_service import (
     save_api_key,
     get_api_keys,
@@ -39,8 +40,8 @@ from services.supabase_service import (
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="AI Multi-Model Aggregator",
-    description="Send one prompt, get responses from multiple AI models.",
-    version="2.0.0",
+    description="Send one prompt, get responses from multiple AI models simultaneously.",
+    version="2.1.0",
 )
 
 # Allow the React dev server (and any other origin during development)
@@ -59,8 +60,9 @@ app.add_middleware(
 class AskRequest(BaseModel):
     """Payload the client sends when asking a question."""
     prompt: str = Field(..., min_length=1, max_length=4000, description="The user's prompt")
-    openai_api_key: str = Field(..., min_length=1, description="OpenAI API key")
-    gemini_api_key: str = Field(..., min_length=1, description="Google Gemini API key")
+    openai_api_key: str = Field(default="", description="OpenAI API key")
+    gemini_api_key: str = Field(default="", description="Google Gemini API key")
+    groq_api_key: str = Field(default="", description="Groq API key")
     user_id: str = Field(default="", description="Optional user ID for saving conversation history")
 
 
@@ -74,13 +76,14 @@ class AskResponse(BaseModel):
     """Aggregated response returned to the client."""
     gpt: ModelResponse
     gemini: ModelResponse
+    groq: ModelResponse
     conversation_id: str | None = None  # ID of saved conversation (if Supabase is configured)
 
 
 class SaveApiKeyRequest(BaseModel):
     """Payload to save an API key."""
     user_id: str = Field(..., min_length=1)
-    provider: str = Field(..., pattern="^(openai|gemini)$")
+    provider: str = Field(..., pattern="^(openai|gemini|groq)$")
     api_key: str = Field(..., min_length=1)
 
 
@@ -105,17 +108,18 @@ async def health_check():
 @app.post("/ask", response_model=AskResponse, tags=["Ask"])
 async def ask(request: AskRequest):
     """
-    Accept a prompt and API keys, call GPT & Gemini **simultaneously**,
-    and return both responses. If user_id is provided and Supabase is
+    Accept a prompt and API keys, call GPT, Gemini, and Groq **simultaneously**,
+    and return responses. If user_id is provided and Supabase is
     configured, the conversation is automatically saved.
     """
 
-    # Fire both requests concurrently
+    # Fire all 3 requests concurrently
     gpt_task = get_gpt_response(request.prompt, request.openai_api_key)
     gemini_task = get_gemini_response(request.prompt, request.gemini_api_key)
+    groq_task = get_groq_response(request.prompt, request.groq_api_key)
 
-    gpt_result, gemini_result = await asyncio.gather(
-        gpt_task, gemini_task, return_exceptions=True
+    gpt_result, gemini_result, groq_result = await asyncio.gather(
+        gpt_task, gemini_task, groq_task, return_exceptions=True
     )
 
     # Build per-model response objects
@@ -131,6 +135,12 @@ async def ask(request: AskRequest):
     else:
         gemini_response.text = gemini_result
 
+    groq_response = ModelResponse()
+    if isinstance(groq_result, Exception):
+        groq_response.error = str(groq_result)
+    else:
+        groq_response.text = groq_result
+
     # Auto-save conversation to Supabase (if configured + user_id provided)
     conversation_id = None
     if request.user_id:
@@ -141,6 +151,8 @@ async def ask(request: AskRequest):
             gpt_error=gpt_response.error,
             gemini_response=gemini_response.text,
             gemini_error=gemini_response.error,
+            groq_response=groq_response.text,
+            groq_error=groq_response.error,
         )
         if saved:
             conversation_id = saved.get("id")
@@ -148,6 +160,7 @@ async def ask(request: AskRequest):
     return AskResponse(
         gpt=gpt_response,
         gemini=gemini_response,
+        groq=groq_response,
         conversation_id=conversation_id,
     )
 
@@ -177,8 +190,8 @@ async def save_key(request: SaveApiKeyRequest):
 @app.delete("/api-keys/{user_id}/{provider}", tags=["API Keys"])
 async def remove_key(user_id: str, provider: str):
     """Delete a specific API key."""
-    if provider not in ("openai", "gemini"):
-        raise HTTPException(status_code=400, detail="Provider must be 'openai' or 'gemini'")
+    if provider not in ("openai", "gemini", "groq"):
+        raise HTTPException(status_code=400, detail="Provider must be 'openai', 'gemini', or 'groq'")
     delete_api_key(user_id, provider)
     return {"status": "deleted"}
 

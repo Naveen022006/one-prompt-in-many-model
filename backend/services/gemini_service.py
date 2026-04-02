@@ -23,10 +23,13 @@ async def get_gemini_response(prompt: str, api_key: str, timeout: int = 30) -> s
         The model's reply as a plain string.
 
     Raises:
-        ValueError:  If the API key is invalid.
+        ValueError:  If the API key is missing or invalid.
         TimeoutError: If the request exceeds the timeout.
         RuntimeError: For any other API / network error.
     """
+    if not api_key or not api_key.strip():
+        raise ValueError("No Gemini API key provided. Skipping.")
+
     try:
         # Configure the SDK with the provided key (module-level config)
         genai.configure(api_key=api_key)
