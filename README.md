@@ -9,6 +9,47 @@
 
 ---
 
+## 💬 Multi-Agent Chat (v3)
+
+The app is now a ChatGPT-style chat where up to three agents answer each message side by side.
+
+- **Chat list sidebar**: past chats grouped by date, search, delete. Each chat has its own URL (`#/c/<id>`), so refresh and back/forward work.
+- **Streaming replies**: every agent streams its answer in parallel. A stop button keeps whatever was generated so far.
+- **Memory**: every agent sees the whole conversation. When an agent didn't answer an earlier turn, it gets another agent's answer, labelled with who wrote it.
+- **Context window**: the backend sends each agent the newest turns that fit `CONTEXT_TOKEN_BUDGET` (estimated at 4 characters per token). The UI shows a note when older messages were left out.
+- **Usage limits**: per-user daily message limit, per-minute rate limit, one or two replies generating at a time, maximum message length, and at most `MAX_AGENTS_PER_MESSAGE` agents per message. The sidebar shows today's usage.
+- **Authenticated API**: the backend verifies the Supabase access token on every request instead of trusting a `user_id` from the browser. API keys are read server-side, so they are no longer sent with each message.
+- **Configurable models**: model IDs, limits, and the system prompt are set in `.env` (see [.env.example](.env.example)).
+
+### Upgrading an existing database
+
+Run [`backend/migrations/001_multi_agent_chat.sql`](backend/migrations/001_multi_agent_chat.sql) in the Supabase SQL editor. It adds the Claude/DeepSeek/Grok and `session_id` columns, indexes, and fixes the `api_keys` constraint that allowed only one key per user. It is safe to run more than once.
+
+### Chat API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/agents` | Agents, model IDs, and whether a key is saved |
+| `GET` | `/usage` | Today's usage and limits |
+| `POST` | `/chat/stream` | `{prompt, agents, session_id}` → NDJSON stream of `meta`, `delta`, `agent_done`, `done` events |
+| `GET` | `/chats` | Chat list for the sidebar |
+| `GET` | `/chats/{id}` | All turns of a chat |
+| `DELETE` | `/chats/{id}` | Delete a chat |
+
+All endpoints except `/` need `Authorization: Bearer <supabase access token>` when Supabase is configured. Rate-limited requests get HTTP 429 with a `Retry-After` header.
+
+### Tests
+
+```bash
+cd backend
+pip install -r requirements.txt
+pytest tests
+```
+
+> The sections below describe the original v2 app. Where they differ from the above, the above is current.
+
+---
+
 ## ✨ Key Features
 
 - **🤖 Multi-Model Comparison** — Query 3 AI models in parallel:
@@ -240,8 +281,8 @@ In your Supabase dashboard:
 -- Table for storing encrypted API keys
 CREATE TABLE api_keys (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT NOT NULL UNIQUE,
-  provider TEXT NOT NULL CHECK (provider IN ('openai', 'gemini', 'groq')),
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK (provider IN ('openai', 'gemini', 'groq', 'claude', 'deepseek', 'grok')),
   api_key TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -259,8 +300,17 @@ CREATE TABLE conversations (
   gemini_error TEXT,
   groq_response TEXT,
   groq_error TEXT,
+  claude_response TEXT,
+  claude_error TEXT,
+  deepseek_response TEXT,
+  deepseek_error TEXT,
+  grok_response TEXT,
+  grok_error TEXT,
+  session_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX idx_conversations_session ON conversations(session_id);
+CREATE INDEX idx_conversations_user_created ON conversations(user_id, created_at);
 
 -- Add indexes for faster queries
 CREATE INDEX idx_api_keys_user ON api_keys(user_id);

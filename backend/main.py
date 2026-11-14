@@ -1,390 +1,455 @@
 """
-AI Multi-Model Aggregator — FastAPI Backend
-=============================================
-Main entry point for the API server.
+AI Multi-Agent Chat — FastAPI Backend
+=====================================
+Endpoints (all except `/` require `Authorization: Bearer <supabase token>`
+when Supabase is configured):
 
-Endpoints:
-  GET  /                              → Health check
-  POST /ask                           → Send prompt to GPT, Gemini, & Groq
-  GET  /api-keys/{user_id}            → Retrieve saved API keys
-  POST /api-keys                      → Save/update an API key
-  DELETE /api-keys/{user_id}/{provider} → Delete an API key
-  GET  /history/{user_id}             → List past conversations
-  DELETE /history/{user_id}/{id}      → Delete a conversation
-  POST /delete-account                → Permanently delete user account & data
-  POST /migrate                       → Migrate local user to authenticated user
+  GET    /                         Health check
+  GET    /agents                   Available agents and whether a key is saved
+  GET    /usage                    Today's message usage and limits
+  POST   /chat/stream              Send a message to up to N agents, streamed as NDJSON
+  GET    /chats                    List chats (sidebar)
+  GET    /chats/{session_id}       All turns of one chat
+  DELETE /chats/{session_id}       Delete a chat
+
+  POST   /ask                      Non-streaming version of /chat/stream (legacy)
+  GET    /api-keys/{user_id}       Retrieve saved API keys
+  POST   /api-keys                 Save/update an API key
+  DELETE /api-keys/{user_id}/{provider}
+  GET    /history/{user_id}        Raw turns, newest first (legacy)
+  DELETE /history/{user_id}/{id}   Delete one turn (legacy)
+  POST   /delete-account           Delete all data of the signed-in user
+  POST   /migrate                  Move data from a local id to the signed-in user
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from __future__ import annotations
+
 import asyncio
-import os
-from dotenv import load_dotenv
+import json
+import uuid
 
-# Load .env from the parent directory (root of the project)
-dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-load_dotenv(dotenv_path)
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
-from services.openai_service import get_gpt_response
-from services.gemini_service import get_gemini_response
-from services.groq_service import get_groq_response
-from services.deepseek_service import get_deepseek_response
-from services.claude_service import get_claude_response
-from services.grok_service import get_grok_response
-from services.supabase_service import (
-    save_api_key,
-    get_api_keys,
-    delete_api_key,
-    save_conversation,
-    get_conversations,
-    delete_conversation,
-    is_connected as supabase_connected,
-)
+import config
+from services import supabase_service, usage
+from services.auth import current_user_id, ensure_same_user
+from services.context import build_messages
+from services.llm_providers import AGENTS, ProviderError, complete_chat, stream_chat
 
-# ---------------------------------------------------------------------------
-# App factory
-# ---------------------------------------------------------------------------
+PROVIDERS = tuple(sorted({a.key_provider for a in AGENTS.values()}))
+PROVIDER_PATTERN = "^(" + "|".join(PROVIDERS) + ")$"
+_background_tasks: set[asyncio.Task] = set()
+
 app = FastAPI(
-    title="AI Multi-Model Aggregator",
-    description="Send one prompt, get responses from multiple AI models simultaneously.",
-    version="2.1.0",
+    title="AI Multi-Agent Chat",
+    description="One chat, several AI agents answering side by side.",
+    version="3.0.0",
 )
 
-# Allow the React dev server (and any other origin during development)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # Tighten in production!
-    allow_credentials=True,
+    allow_origins=["*"],  # Tighten in production!
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(usage.LimitExceeded)
+async def _limit_handler(_request, exc: usage.LimitExceeded):
+    headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+    return JSONResponse(status_code=429, content={"detail": str(exc)}, headers=headers)
+
+
 # ---------------------------------------------------------------------------
-# Request / Response schemas
+# Schemas
 # ---------------------------------------------------------------------------
 
-class AskRequest(BaseModel):
-    """Payload the client sends when asking a question."""
-    prompt: str = Field(..., min_length=1, max_length=4000, description="The user's prompt")
-    history: list[dict] = Field(default=[], description="List of previous conversation turns")
-    openai_api_key: str = Field(default="", description="OpenAI API key")
-    gemini_api_key: str = Field(default="", description="Google Gemini API key")
-    groq_api_key: str = Field(default="", description="Groq API key")
-    deepseek_api_key: str = Field(default="", description="Deepseek API key")
-    claude_api_key: str = Field(default="", description="Claude API key")
-    grok_api_key: str = Field(default="", description="Grok API key")
-    user_id: str = Field(default="", description="Optional user ID for saving conversation history")
-    session_id: str | None = Field(default=None, description="Optional conversation thread/session ID")
-    selected_models: list[str] = Field(default=["gpt"], description="List of selected models: gpt, gemini, groq, deepseek, claude, and/or grok")
+class ChatRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    agents: list[str] = Field(..., min_length=1)
+    session_id: str | None = None
+    # Only used when no key is stored server-side (e.g. running without Supabase).
+    api_keys: dict[str, str] = Field(default_factory=dict)
+    # Only used when Supabase is not configured; otherwise history is loaded from the DB.
+    history: list[dict] = Field(default_factory=list)
 
 
 class ModelResponse(BaseModel):
-    """The response returned from a single model."""
     text: str | None = None
     error: str | None = None
 
 
-class AskResponse(BaseModel):
-    """Aggregated response returned to the client."""
-    gpt: ModelResponse
-    gemini: ModelResponse
-    groq: ModelResponse
-    deepseek: ModelResponse
-    claude: ModelResponse
-    grok: ModelResponse
-    conversation_id: str | None = None  # ID of saved conversation (if Supabase is configured)
-    session_id: str | None = None       # ID linking multiple turns
+class AskRequest(BaseModel):
+    """Legacy payload kept for backwards compatibility."""
+    prompt: str = Field(..., min_length=1)
+    history: list[dict] = Field(default_factory=list)
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    deepseek_api_key: str = ""
+    claude_api_key: str = ""
+    grok_api_key: str = ""
+    session_id: str | None = None
+    selected_models: list[str] = Field(default_factory=lambda: ["gpt"])
 
 
 class SaveApiKeyRequest(BaseModel):
-    """Payload to save an API key."""
     user_id: str = Field(..., min_length=1)
-    provider: str = Field(..., pattern="^(openai|gemini|groq|deepseek|claude|grok)$")
-    api_key: str = Field(..., min_length=1)
+    provider: str = Field(..., pattern=PROVIDER_PATTERN)
+    api_key: str = Field(..., min_length=1, max_length=500)
 
 
 class MigrateRequest(BaseModel):
-    """Payload to migrate local user data to auth user ID."""
     old_id: str = Field(..., min_length=1)
     new_id: str = Field(..., min_length=1)
 
 
 class DeleteAccountRequest(BaseModel):
-    """Payload to delete user account."""
     user_id: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
-
+    password: str = Field(default="")
 
 
 # ---------------------------------------------------------------------------
-# Routes — Health
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _valid_uuid(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat id.")
+
+
+def _validate_message(prompt: str, agents: list[str]) -> list[str]:
+    prompt = prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Message is empty.")
+    if len(prompt) > config.MAX_PROMPT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Message is too long ({len(prompt)} characters). The limit is {config.MAX_PROMPT_CHARS}.",
+        )
+    unique = list(dict.fromkeys(agents))
+    unknown = [a for a in unique if a not in AGENTS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown agent(s): {', '.join(unknown)}")
+    if len(unique) > config.MAX_AGENTS_PER_MESSAGE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pick at most {config.MAX_AGENTS_PER_MESSAGE} agents per message.",
+        )
+    return unique
+
+
+async def _resolve_keys(user_id: str, fallback: dict[str, str]) -> dict[str, str]:
+    stored = await asyncio.to_thread(supabase_service.get_api_key_map, user_id)
+    return {p: (stored.get(p) or fallback.get(p) or "") for p in PROVIDERS}
+
+
+async def _load_history(user_id: str, session_id: str, client_history: list[dict]) -> list[dict]:
+    if supabase_service.is_connected():
+        return await asyncio.to_thread(supabase_service.get_session_turns, user_id, session_id)
+    return client_history
+
+
+def _ndjson(event: dict) -> bytes:
+    return (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Health / metadata
 # ---------------------------------------------------------------------------
 
 @app.get("/", tags=["Health"])
 async def health_check():
-    """Simple health check to verify the API is running."""
     return {
         "status": "ok",
-        "message": "AI Multi-Model Aggregator is running 🚀",
-        "supabase": supabase_connected(),
+        "message": "AI Multi-Agent Chat is running",
+        "supabase": supabase_service.is_connected(),
     }
 
 
+@app.get("/agents", tags=["Chat"])
+async def list_agents(user_id: str = Depends(current_user_id)):
+    stored = await asyncio.to_thread(supabase_service.get_api_key_map, user_id)
+    return {
+        "agents": [
+            {
+                "id": a.id,
+                "label": a.label,
+                "vendor": a.vendor,
+                "model": a.model,
+                "key_provider": a.key_provider,
+                "has_key": bool(stored.get(a.key_provider)),
+            }
+            for a in AGENTS.values()
+        ],
+        "max_agents_per_message": config.MAX_AGENTS_PER_MESSAGE,
+    }
+
+
+@app.get("/usage", tags=["Chat"])
+async def get_usage(user_id: str = Depends(current_user_id)):
+    return await usage.get_usage(user_id)
+
+
 # ---------------------------------------------------------------------------
-# Routes — Ask (core feature)
+# Chat (streaming)
 # ---------------------------------------------------------------------------
 
-@app.post("/ask", response_model=AskResponse, tags=["Ask"])
-async def ask(request: AskRequest):
+@app.post("/chat/stream", tags=["Chat"])
+async def chat_stream(request: ChatRequest, user_id: str = Depends(current_user_id)):
     """
-    Accept a prompt and API keys, call the selected models,
-    and return responses. If user_id is provided and Supabase is
-    configured, the conversation is automatically saved.
+    Stream replies from the selected agents as newline-delimited JSON:
+
+      {"type": "meta", "session_id", "agents", "context": {agent: {...}}}
+      {"type": "delta", "agent", "text"}            (many)
+      {"type": "agent_done", "agent", "error"}      (one per agent)
+      {"type": "done", "conversation_id", "usage"}
     """
+    agents = _validate_message(request.prompt, request.agents)
+    prompt = request.prompt.strip()
+    session_id = _valid_uuid(request.session_id) or str(uuid.uuid4())
 
-    # Build history for all models
-    gpt_history = []
-    gemini_history = []
-    groq_history = []
-    deepseek_history = []
-    claude_history = []
-    grok_history = []
+    keys = await _resolve_keys(user_id, request.api_keys)
+    history = await _load_history(user_id, session_id, request.history)
+    contexts = {
+        a: build_messages(history, a, prompt, config.CONTEXT_TOKEN_BUDGET) for a in agents
+    }
 
-    for turn in request.history:
-        pt = turn.get("prompt")
-        if pt:
-            gpt_history.append({"role": "user", "content": pt})
-            gemini_history.append({"role": "user", "content": pt})
-            groq_history.append({"role": "user", "content": pt})
-            deepseek_history.append({"role": "user", "content": pt})
-            claude_history.append({"role": "user", "content": pt})
-            grok_history.append({"role": "user", "content": pt})
-        
-        # Append assistant turns only if the model answered previously
-        if turn.get("gpt_response") and not turn.get("gpt_response").startswith("Error"):
-            gpt_history.append({"role": "assistant", "content": turn.get("gpt_response")})
-        if turn.get("gemini_response") and not turn.get("gemini_response").startswith("Error"):
-            gemini_history.append({"role": "assistant", "content": turn.get("gemini_response")})
-        if turn.get("groq_response") and not turn.get("groq_response").startswith("Error"):
-            groq_history.append({"role": "assistant", "content": turn.get("groq_response")})
-        if turn.get("deepseek_response") and not turn.get("deepseek_response").startswith("Error"):
-            deepseek_history.append({"role": "assistant", "content": turn.get("deepseek_response")})
-        if turn.get("claude_response") and not turn.get("claude_response").startswith("Error"):
-            claude_history.append({"role": "assistant", "content": turn.get("claude_response")})
-        if turn.get("grok_response") and not turn.get("grok_response").startswith("Error"):
-            grok_history.append({"role": "assistant", "content": turn.get("grok_response")})
+    # Raises LimitExceeded -> 429 before the stream starts.
+    await usage.acquire(user_id)
 
-    # Create tasks only for selected models
-    tasks = {}
-    if "gpt" in request.selected_models:
-        tasks["gpt"] = get_gpt_response(request.prompt, request.openai_api_key, history=gpt_history)
-    if "gemini" in request.selected_models:
-        tasks["gemini"] = get_gemini_response(request.prompt, request.gemini_api_key, history=gemini_history)
-    if "groq" in request.selected_models:
-        tasks["groq"] = get_groq_response(request.prompt, request.groq_api_key, history=groq_history)
-    if "deepseek" in request.selected_models:
-        tasks["deepseek"] = get_deepseek_response(request.prompt, request.deepseek_api_key, history=deepseek_history)
-    if "claude" in request.selected_models:
-        tasks["claude"] = get_claude_response(request.prompt, request.claude_api_key, history=claude_history)
-    if "grok" in request.selected_models:
-        tasks["grok"] = get_grok_response(request.prompt, request.grok_api_key, history=grok_history)
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+        texts = {a: [] for a in agents}
+        errors: dict[str, str | None] = {a: None for a in agents}
+        finished = False
 
-    # Run selected model calls concurrently
-    results = {}
-    if tasks:
-        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        results = dict(zip(tasks.keys(), results))
+        async def run(agent_id: str):
+            try:
+                key = keys[AGENTS[agent_id].key_provider]
+                async for delta in stream_chat(agent_id, key, contexts[agent_id].messages):
+                    texts[agent_id].append(delta)
+                    await queue.put({"type": "delta", "agent": agent_id, "text": delta})
+                if not "".join(texts[agent_id]).strip():
+                    errors[agent_id] = "The model returned an empty response."
+            except ProviderError as exc:
+                errors[agent_id] = str(exc)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # never let one agent break the stream
+                print(f"⚠️ {agent_id} failed: {exc!r}")
+                errors[agent_id] = "Unexpected error while generating a reply."
+            await queue.put({"type": "agent_done", "agent": agent_id, "error": errors[agent_id]})
 
-    # Build response objects
-    gpt_response = ModelResponse()
-    gemini_response = ModelResponse()
-    groq_response = ModelResponse()
-    deepseek_response = ModelResponse()
-    claude_response = ModelResponse()
-    grok_response = ModelResponse()
+        def responses() -> dict[str, dict]:
+            out = {}
+            for a in agents:
+                text = "".join(texts[a]).strip() or None
+                out[a] = {"text": text, "error": None if text and not errors[a] else errors[a]}
+            return out
 
-    # Populate responses for selected models
-    if "gpt" in request.selected_models:
-        gpt_result = results.get("gpt")
-        if isinstance(gpt_result, Exception):
-            gpt_response.error = str(gpt_result)
-        else:
-            gpt_response.text = gpt_result
+        tasks = [asyncio.create_task(run(a)) for a in agents]
+        try:
+            yield _ndjson({
+                "type": "meta",
+                "session_id": session_id,
+                "agents": agents,
+                "context": {
+                    a: {
+                        "included_turns": c.included_turns,
+                        "trimmed_turns": c.trimmed_turns,
+                        "history_tokens": c.history_tokens,
+                    }
+                    for a, c in contexts.items()
+                },
+            })
 
-    if "gemini" in request.selected_models:
-        gemini_result = results.get("gemini")
-        if isinstance(gemini_result, Exception):
-            gemini_response.error = str(gemini_result)
-        else:
-            gemini_response.text = gemini_result
+            remaining = len(agents)
+            while remaining:
+                event = await queue.get()
+                if event["type"] == "agent_done":
+                    remaining -= 1
+                yield _ndjson(event)
 
-    if "groq" in request.selected_models:
-        groq_result = results.get("groq")
-        if isinstance(groq_result, Exception):
-            groq_response.error = str(groq_result)
-        else:
-            groq_response.text = groq_result
+            saved = await asyncio.to_thread(
+                supabase_service.save_conversation, user_id, prompt, responses(), session_id
+            )
+            finished = True
+            yield _ndjson({
+                "type": "done",
+                "conversation_id": saved.get("id") if saved else None,
+                "persisted": bool(saved),
+                "usage": await usage.get_usage(user_id),
+            })
+        finally:
+            for t in tasks:
+                t.cancel()
+            usage.release(user_id)
+            if not finished:
+                # Client stopped or disconnected: keep the partial answers,
+                # like ChatGPT does. Can't await here, so run it in the background.
+                partial = responses()
+                for r in partial.values():
+                    if not r["text"] and not r["error"]:
+                        r["error"] = "Stopped before a reply was generated."
+                task = asyncio.get_running_loop().create_task(asyncio.to_thread(
+                    supabase_service.save_conversation, user_id, prompt, partial, session_id
+                ))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
 
-    if "deepseek" in request.selected_models:
-        deepseek_result = results.get("deepseek")
-        if isinstance(deepseek_result, Exception):
-            deepseek_response.error = str(deepseek_result)
-        else:
-            deepseek_response.text = deepseek_result
-
-    if "claude" in request.selected_models:
-        claude_result = results.get("claude")
-        if isinstance(claude_result, Exception):
-            claude_response.error = str(claude_result)
-        else:
-            claude_response.text = claude_result
-
-    if "grok" in request.selected_models:
-        grok_result = results.get("grok")
-        if isinstance(grok_result, Exception):
-            grok_response.error = str(grok_result)
-        else:
-            grok_response.text = grok_result
-
-    # Auto-save conversation to Supabase (if configured + user_id provided)
-    conversation_id = None
-    if request.user_id:
-        saved = save_conversation(
-            user_id=request.user_id,
-            prompt=request.prompt,
-            gpt_response=gpt_response.text,
-            gpt_error=gpt_response.error,
-            gemini_response=gemini_response.text,
-            gemini_error=gemini_response.error,
-            groq_response=groq_response.text,
-            groq_error=groq_response.error,
-            deepseek_response=deepseek_response.text,
-            deepseek_error=deepseek_response.error,
-            claude_response=claude_response.text,
-            claude_error=claude_response.error,
-            grok_response=grok_response.text,
-            grok_error=grok_response.error,
-            session_id=request.session_id,
-        )
-        if saved:
-            conversation_id = saved.get("id")
-            # If the frontend didn't pass a session_id, fallback to the row ID so future ones can use it.
-            if not request.session_id:
-                request.session_id = conversation_id
-
-    return AskResponse(
-        gpt=gpt_response,
-        gemini=gemini_response,
-        groq=groq_response,
-        deepseek=deepseek_response,
-        claude=claude_response,
-        grok=grok_response,
-        conversation_id=conversation_id,
-        session_id=request.session_id,
+    return StreamingResponse(
+        event_stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 # ---------------------------------------------------------------------------
-# Routes — API Keys CRUD
+# Chats (sessions)
 # ---------------------------------------------------------------------------
 
-@app.get("/api-keys/{user_id}", tags=["API Keys"])
-async def get_keys(user_id: str):
-    """Retrieve all saved API keys for a user."""
-    keys = get_api_keys(user_id)
-    # Transform into a dict: { "openai": "sk-...", "gemini": "AIza..." }
-    result = {}
-    for k in keys:
-        result[k["provider"]] = k["api_key"]
-    return {"keys": result}
+@app.get("/chats", tags=["Chats"])
+async def list_chats(user_id: str = Depends(current_user_id)):
+    return {"chats": await asyncio.to_thread(supabase_service.list_sessions, user_id)}
+
+
+@app.get("/chats/{session_id}", tags=["Chats"])
+async def get_chat(session_id: str, user_id: str = Depends(current_user_id)):
+    sid = _valid_uuid(session_id)
+    turns = await asyncio.to_thread(supabase_service.get_session_turns, user_id, sid)
+    if not turns:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    return {"session_id": sid, "turns": turns}
+
+
+@app.delete("/chats/{session_id}", tags=["Chats"])
+async def remove_chat(session_id: str, user_id: str = Depends(current_user_id)):
+    sid = _valid_uuid(session_id)
+    await asyncio.to_thread(supabase_service.delete_session, user_id, sid)
+    return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Legacy non-streaming endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/ask", tags=["Chat"])
+async def ask(request: AskRequest, user_id: str = Depends(current_user_id)):
+    agents = _validate_message(request.prompt, request.selected_models)
+    prompt = request.prompt.strip()
+    session_id = _valid_uuid(request.session_id) or str(uuid.uuid4())
+    fallback = {
+        "openai": request.openai_api_key, "gemini": request.gemini_api_key,
+        "groq": request.groq_api_key, "deepseek": request.deepseek_api_key,
+        "claude": request.claude_api_key, "grok": request.grok_api_key,
+    }
+    keys = await _resolve_keys(user_id, fallback)
+    history = await _load_history(user_id, session_id, request.history)
+
+    await usage.acquire(user_id)
+    try:
+        async def one(agent_id: str) -> ModelResponse:
+            ctx = build_messages(history, agent_id, prompt, config.CONTEXT_TOKEN_BUDGET)
+            try:
+                text = await complete_chat(agent_id, keys[AGENTS[agent_id].key_provider], ctx.messages)
+                return ModelResponse(text=text)
+            except ProviderError as exc:
+                return ModelResponse(error=str(exc))
+
+        results = dict(zip(agents, await asyncio.gather(*(one(a) for a in agents))))
+    finally:
+        usage.release(user_id)
+
+    saved = await asyncio.to_thread(
+        supabase_service.save_conversation, user_id, prompt,
+        {a: r.model_dump() for a, r in results.items()}, session_id,
+    )
+    body = {a: ModelResponse().model_dump() for a in AGENTS}
+    body.update({a: r.model_dump() for a, r in results.items()})
+    body["conversation_id"] = saved.get("id") if saved else None
+    body["session_id"] = session_id
+    return body
+
+
+# ---------------------------------------------------------------------------
+# API Keys
+# ---------------------------------------------------------------------------
+
+@app.get("/api-keys/{path_user_id}", tags=["API Keys"])
+async def get_keys(path_user_id: str, user_id: str = Depends(current_user_id)):
+    ensure_same_user(path_user_id, user_id)
+    return {"keys": await asyncio.to_thread(supabase_service.get_api_key_map, user_id)}
 
 
 @app.post("/api-keys", tags=["API Keys"])
-async def save_key(request: SaveApiKeyRequest):
-    """Save or update an API key for a user + provider."""
-    saved = save_api_key(request.user_id, request.provider, request.api_key)
-    return {"status": "saved", "data": saved}
+async def save_key(request: SaveApiKeyRequest, user_id: str = Depends(current_user_id)):
+    ensure_same_user(request.user_id, user_id)
+    saved = await asyncio.to_thread(
+        supabase_service.save_api_key, user_id, request.provider, request.api_key.strip()
+    )
+    return {"status": "saved" if saved else "not_persisted"}
 
 
-@app.delete("/api-keys/{user_id}/{provider}", tags=["API Keys"])
-async def remove_key(user_id: str, provider: str):
-    """Delete a specific API key."""
-    if provider not in ("openai", "gemini", "groq"):
-        raise HTTPException(status_code=400, detail="Provider must be 'openai', 'gemini', or 'groq'")
-    delete_api_key(user_id, provider)
+@app.delete("/api-keys/{path_user_id}/{provider}", tags=["API Keys"])
+async def remove_key(path_user_id: str, provider: str, user_id: str = Depends(current_user_id)):
+    ensure_same_user(path_user_id, user_id)
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Provider must be one of: {', '.join(PROVIDERS)}")
+    await asyncio.to_thread(supabase_service.delete_api_key, user_id, provider)
     return {"status": "deleted"}
 
 
 # ---------------------------------------------------------------------------
-# Routes — Conversation History
+# Legacy history
 # ---------------------------------------------------------------------------
 
-@app.get("/history/{user_id}", tags=["History"])
-async def get_history(user_id: str, limit: int = 50):
-    """Retrieve conversation history for a user (newest first)."""
-    conversations = get_conversations(user_id, limit)
-    return {"conversations": conversations}
+@app.get("/history/{path_user_id}", tags=["History"])
+async def get_history(path_user_id: str, limit: int = 50, user_id: str = Depends(current_user_id)):
+    ensure_same_user(path_user_id, user_id)
+    limit = max(1, min(limit, 500))
+    return {"conversations": await asyncio.to_thread(supabase_service.get_conversations, user_id, limit)}
 
 
-@app.delete("/history/{user_id}/{conversation_id}", tags=["History"])
-async def remove_conversation(user_id: str, conversation_id: str):
-    """Delete a specific conversation."""
-    delete_conversation(user_id, conversation_id)
+@app.delete("/history/{path_user_id}/{conversation_id}", tags=["History"])
+async def remove_conversation(path_user_id: str, conversation_id: str, user_id: str = Depends(current_user_id)):
+    ensure_same_user(path_user_id, user_id)
+    await asyncio.to_thread(supabase_service.delete_conversation, user_id, conversation_id)
     return {"status": "deleted"}
 
 
 # ---------------------------------------------------------------------------
-# Routes — Account Deletion
+# Account
 # ---------------------------------------------------------------------------
 
 @app.post("/delete-account", tags=["Account"])
-async def delete_account(request: DeleteAccountRequest):
-    """
-    Delete user account and all associated data.
-    Requires password verification (verified on frontend before calling).
-    Deletes all conversations, API keys, and user data.
-    """
+async def delete_account(request: DeleteAccountRequest, user_id: str = Depends(current_user_id)):
+    """Delete all API keys and conversations of the signed-in user."""
+    ensure_same_user(request.user_id, user_id)
     try:
-        user_id = request.user_id
-        
-        # Delete all API keys for this user
-        from services.supabase_service import supabase
-        if supabase:
-            # Delete API keys
-            supabase.table("api_keys").delete().eq("user_id", user_id).execute()
-            
-            # Delete conversations
-            supabase.table("conversations").delete().eq("user_id", user_id).execute()
-        
-        return {
-            "status": "deleted",
-            "message": "Account and all associated data have been permanently deleted."
-        }
-    
+        await asyncio.to_thread(supabase_service.delete_user_data, user_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
+        print(f"⚠️ delete_account failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete account data.")
+    return {"status": "deleted", "message": "Account data has been permanently deleted."}
 
-
-# ---------------------------------------------------------------------------
-# Routes — Migration
-# ---------------------------------------------------------------------------
-
-from services.supabase_service import migrate_user_data
 
 @app.post("/migrate", tags=["Migration"])
-async def migrate(request: MigrateRequest):
-    """Migrate all keys and history from a local UUID to an authenticated UUID."""
-    success = migrate_user_data(request.old_id, request.new_id)
-    if not success:
+async def migrate(request: MigrateRequest, user_id: str = Depends(current_user_id)):
+    """Move keys and history from a pre-login local id to the signed-in user."""
+    ensure_same_user(request.new_id, user_id)
+    ok = await asyncio.to_thread(supabase_service.migrate_user_data, request.old_id, user_id)
+    if not ok:
         raise HTTPException(status_code=500, detail="Failed to migrate data.")
     return {"status": "migrated"}
 
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn

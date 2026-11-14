@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { deleteAccountData } from "../lib/supabaseHelper";
 import ChangePasswordModal from "./ChangePasswordModal";
 import DeleteAccountModal from "./DeleteAccountModal";
 import "./UserProfilePage.css";
@@ -65,23 +66,8 @@ export default function UserProfilePage({ userEmail, onSignOut, onNavigate, user
 
   const handleDeleteAccount = async (password) => {
     try {
-      // Call backend to delete the account and associated data
-      const API_URL = "http://localhost:8000";
-      
-      const res = await fetch(`${API_URL}/delete-account`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          password: password, // Backend receives password for audit/verification
-        }),
-      });
-
-      if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        const detail = errorBody?.detail || `Server error: ${res.status}`;
-        throw new Error(detail);
-      }
+      // Call backend to delete the account's data (authenticated request)
+      await deleteAccountData(userId, password);
 
       // Clear authentication and redirect to login
       await supabase.auth.signOut();

@@ -20,7 +20,7 @@ const API_MODELS = [
     name: "GPT / OpenAI",
     icon: "⚡",
     color: "#10b981",
-    description: "Default reasoning model (GPT-4o Mini)",
+    description: "OpenAI GPT models",
     placeholder: "sk-...",
     helpUrl: "https://platform.openai.com/api-keys",
     helpText: "Get your OpenAI API key from platform.openai.com/api-keys",
@@ -30,7 +30,7 @@ const API_MODELS = [
     name: "Gemini / Google",
     icon: "✦",
     color: "#8b5cf6",
-    description: "Multimodal vision support (Gemini 1.5 Flash)",
+    description: "Google Gemini models",
     placeholder: "AIzaSy...",
     helpUrl: "https://aistudio.google.com/app/apikey",
     helpText: "Get your Gemini API key from aistudio.google.com/app/apikey",
@@ -40,7 +40,7 @@ const API_MODELS = [
     name: "Llama / Groq",
     icon: "⚙️",
     color: "#f59e0b",
-    description: "Ultra-fast inference (Llama 3.1 8B)",
+    description: "Fast Llama inference on Groq",
     placeholder: "gsk_...",
     helpUrl: "https://console.groq.com/",
     helpText: "Get your Groq API key from console.groq.com",
@@ -50,7 +50,7 @@ const API_MODELS = [
     name: "Claude / Anthropic",
     icon: "🧠",
     color: "#22d3ee",
-    description: "Advanced reasoning & analysis (Claude 3.5 Sonnet)",
+    description: "Anthropic Claude models",
     placeholder: "sk-ant-...",
     helpUrl: "https://console.anthropic.com/",
     helpText: "Get your Claude API key from console.anthropic.com",
@@ -418,11 +418,9 @@ export default function ApiKeysPage({ userId, apiKeys: initialKeys, onUpdateKeys
             <div className="info-card">
               <h4 className="info-title">💰 Pricing</h4>
               <p className="info-text">
-                <strong>GPT-4o Mini:</strong> $0.15 input / $0.60 output per 1M tokens
-                <br />
-                <strong>Gemini 1.5 Flash:</strong> $0.075 input / $0.30 output per 1M tokens
-                <br />
-                <strong>Llama 3 (Groq):</strong> Free or minimal cost
+                Each agent bills your own provider account. Every message also sends recent chat
+                history as context, so longer chats cost more per message. Check each provider's
+                pricing page for current rates.
               </p>
             </div>
           </div>
