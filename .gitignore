@@ -31,3 +31,8 @@ test_rest.py
 test_supabase.py
 out.txt
 re/
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
